@@ -3,7 +3,7 @@ import { CUSTOM_EVENTS } from "../../components/events/event-bus-component.js";
 import { ColliderComponent } from "../../components/collider/collider-component.js";
 import { HealthComponent } from "../../components/health/health-component.js";
 
-const BOSS_TOTAL_HP = 50;
+const BOSS_TOTAL_HP = 150;
 
 export class BossEnemy extends Phaser.GameObjects.Container {
   constructor(scene, x, y) {
@@ -30,6 +30,8 @@ export class BossEnemy extends Phaser.GameObjects.Container {
     this.healthBar = null;
     this.healthBarBg = null;
 
+    this.bullets = this.scene.physics.add.group();
+
     this.scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
   }
 
@@ -50,9 +52,10 @@ export class BossEnemy extends Phaser.GameObjects.Container {
     this.setVisible(true);
     this.setAlpha(1);
     this.shipSprite.setTint(0xffffff);
+    this.bullets.clear(true, true);
 
-    this.healthBarBg = this.scene.add.rectangle(this.scale.width / 2, 10, 200, 16, 0x333333).setDepth(10);
-    this.healthBar = this.scene.add.rectangle(this.scale.width / 2, 10, 200, 16, 0xff0000).setDepth(10);
+    this.healthBarBg = this.scene.add.rectangle(this.scene.scale.width / 2, 10, 200, 16, 0x333333).setDepth(10);
+    this.healthBar = this.scene.add.rectangle(this.scene.scale.width / 2, 10, 200, 16, 0xff0000).setDepth(10);
   }
 
   get shipAssetKey() {
@@ -76,15 +79,21 @@ export class BossEnemy extends Phaser.GameObjects.Container {
 
     if (this.healthBar) this.healthBar.setScale(ratio, 1);
 
-    if (ratio <= 0.5 && this.phase < 2) { 
+    if (ratio <= 0.6 && this.phase < 2) { 
       this.phase = 2; 
       this.shipSprite.setTint(0xff8800); 
     }
+    if (ratio <= 0.3 && this.phase < 3) {
+      this.phase = 3;
+      this.shipSprite.setTint(0xff0000);
+    }
 
-    const speed = 100;
+    const speed = this.phase === 3 ? 180 : 120;
     const topY = 80;
 
-    if (this.phase === 2) {
+    if (this.phase === 3) {
+      this._phase3(dt, speed);
+    } else if (this.phase === 2) {
       this._phase2(dt, speed);
     } else {
       this._phase1(dt, speed, topY);
@@ -96,14 +105,14 @@ export class BossEnemy extends Phaser.GameObjects.Container {
       this.y += speed * (dt / 1000);
       return;
     }
-    this.x += (speed + 50) * this.moveDir * (dt / 1000);
+    this.x += (speed + 80) * this.moveDir * (dt / 1000);
     if (this.x > this.scene.scale.width - 60) this.moveDir = -1;
     if (this.x < 60) this.moveDir = 1;
 
     this.shootTimer -= dt;
     if (this.shootTimer <= 0) {
       this._fireBurst();
-      this.shootTimer = 1000;
+      this.shootTimer = 800;
     }
   }
 
@@ -125,31 +134,62 @@ export class BossEnemy extends Phaser.GameObjects.Container {
       return;
     }
 
-    const chargeSpeed = 450;
+    const chargeSpeed = 500;
     this.x += (dx / dist) * chargeSpeed * (dt / 1000);
     this.y += (dy / dist) * chargeSpeed * (dt / 1000);
   }
 
+  _phase3(dt, speed) {
+    this.teleportTimer += dt;
+    const angle = this.teleportTimer / 500;
+    const radius = 100;
+    const centerX = this.scene.scale.width / 2;
+    const centerY = 150;
+
+    this.x = centerX + Math.cos(angle) * radius;
+    this.y = centerY + Math.sin(angle) * (radius / 2);
+
+    this.shootTimer -= dt;
+    if (this.shootTimer <= 0) {
+      this._fireSpiralPattern();
+      this.shootTimer = 400;
+    }
+  }
+
   _fireBurst() {
-    const angles = [-20, -10, 0, 10, 20];
+    const angles = [-30, -15, 0, 15, 30];
     for (const angle of angles) {
       const rad = Phaser.Math.DegToRad(90 + angle);
-      const bullet = this.scene.physics.add.sprite(this.x, this.y + 40, "bullet").setScale(1.2);
-      bullet.body.velocity.x = Math.cos(rad) * 220;
-      bullet.body.velocity.y = Math.sin(rad) * 220;
+      const bullet = this.bullets.create(this.x, this.y + 40, "bullet").setScale(1.3);
+      bullet.body.velocity.x = Math.cos(rad) * 250;
+      bullet.body.velocity.y = Math.sin(rad) * 250;
       bullet.setDepth(5);
       this.scene.time.delayedCall(3000, () => bullet.destroy());
     }
   }
 
   _fireHardPattern() {
-    const totalBullets = 12;
+    const totalBullets = 16;
     for (let i = 0; i < totalBullets; i++) {
       const angle = (360 / totalBullets) * i;
       const rad = Phaser.Math.DegToRad(angle);
-      const bullet = this.scene.physics.add.sprite(this.x, this.y, "bullet").setScale(1).setTint(0xff8800);
-      bullet.body.velocity.x = Math.cos(rad) * 280;
-      bullet.body.velocity.y = Math.sin(rad) * 280;
+      const bullet = this.bullets.create(this.x, this.y, "bullet").setScale(1.2).setTint(0xff8800);
+      bullet.body.velocity.x = Math.cos(rad) * 320;
+      bullet.body.velocity.y = Math.sin(rad) * 320;
+      bullet.setDepth(5);
+      this.scene.time.delayedCall(3000, () => bullet.destroy());
+    }
+  }
+
+  _fireSpiralPattern() {
+    const baseAngle = (this.teleportTimer / 100) % 360;
+    const bulletsCount = 4;
+    for (let i = 0; i < bulletsCount; i++) {
+      const angle = baseAngle + (i * 90);
+      const rad = Phaser.Math.DegToRad(angle);
+      const bullet = this.bullets.create(this.x, this.y, "bullet").setScale(1).setTint(0xff00ff);
+      bullet.body.velocity.x = Math.cos(rad) * 350;
+      bullet.body.velocity.y = Math.sin(rad) * 350;
       bullet.setDepth(5);
       this.scene.time.delayedCall(3000, () => bullet.destroy());
     }
@@ -158,6 +198,7 @@ export class BossEnemy extends Phaser.GameObjects.Container {
   _die() {
     this.setActive(false);
     this.setVisible(false);
+    this.bullets.clear(true, true);
     if (this.healthBar) { this.healthBar.destroy(); this.healthBar = null; }
     if (this.healthBarBg) { this.healthBarBg.destroy(); this.healthBarBg = null; }
     if (this.eventBusComponent) {

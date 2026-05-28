@@ -144,6 +144,17 @@ export class GameScene extends Phaser.Scene {
       this.boss.healthComponent.hit();
     });
 
+    this.physics.add.overlap(player, this.boss.bullets, (playerGo, bulletGo) => {
+      if (!this.bossActive || !playerGo.active) return;
+      bulletGo.destroy();
+      if (shieldActive) {
+        shieldActive = false;
+        eventBusComponent.emit(CUSTOM_EVENTS.SHIELD_CONSUMED);
+        return;
+      }
+      playerGo.colliderComponent.collideWithEnemyProjectile();
+    });
+
     eventBusComponent.on(CUSTOM_EVENTS.ENEMY_DESTROYED, (enemy) => {
       this.killCount++;
       if (Math.random() < CONFIG.POWERUP_DROP_CHANCE && enemy && enemy.x && enemy.y) {
@@ -224,24 +235,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   #activarEasterEgg(scene) {
-    const codi = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
-    let idx = 0;
-    scene.input.keyboard.on("keydown", (event) => {
-      if (event.key === codi[idx]) {
-        idx++;
-        if (idx === codi.length) {
-          idx = 0;
-          scene.add.text(scene.scale.width / 2, scene.scale.height / 2, "MODE DÉU ACTIVAT!", {
-            fontSize: "16px", color: "#ffcc00", fontFamily: "monospace", backgroundColor: "#000000",
-            padding: { x: 8, y: 4 },
-          }).setOrigin(0.5).setDepth(20);
-          scene.bossSpawned = true;
-          scene.bossActive = true;
-          scene.boss.reset();
-        }
-      } else {
-        idx = 0;
-      }
+    scene.input.keyboard.on("keydown-E", () => {
+      const msg = scene.add.text(scene.scale.width / 2, scene.scale.height / 2, "¡BOSS APARECE!", {
+        fontSize: "20px", color: "#ff0000", fontFamily: "monospace", backgroundColor: "#000000aa",
+        padding: { x: 10, y: 5 },
+      }).setOrigin(0.5).setDepth(100);
+      scene.time.delayedCall(2000, () => msg.destroy());
+
+      scene.bossSpawned = true;
+      scene.bossActive = true;
+      scene.boss.reset();
     });
   }
 

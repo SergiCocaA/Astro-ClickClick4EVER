@@ -44,7 +44,7 @@ export class MenuScene extends Phaser.Scene {
       statusText.setText("Creant partida...");
       try {
         const partida = await crearPartida("Espai Profund");
-        this.scene.start("BriefingScene", { jugador, partida, idToken, localId });
+        this.scene.start("VideoScene", { jugador, partida, idToken, localId });
       } catch (e) {
         statusText.setText("Error: " + e.message);
       }

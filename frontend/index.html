@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Shooter</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background: #0a0a2e;
+      font-family: monospace;
+    }
+    body {
+      background-color: #0a0a2e;
+    }
+    canvas { border: 2px solid #b2405e; }
+
+    /* OVERLAY LOGIN */
+    #login-overlay {
+      position: fixed; top:0; left:0; width:100vw; height:100vh;
+      background: rgba(5,5,20,0.92);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    #login-overlay.hidden { display: none; }
+
+    #login-box {
+      background: #0f0f3a;
+      border: 2px solid #ff2f66;
+      border-radius: 12px;
+      padding: 35px 40px;
+      width: 340px;
+      box-shadow: 0 0 40px rgba(255,47,102,0.3);
+      text-align: center;
+    }
+    #login-box h1 {
+      font-size: 20px; color: #ff2f66; margin: 0 0 5px 0;
+    }
+    #login-box .sub {
+      font-size: 11px; color: #666688; margin: 0 0 20px 0;
+    }
+
+    #login-box label {
+      display: block; text-align: left; font-size: 12px;
+      color: #aaaacc; margin: 10px 0 4px 0;
+    }
+    #login-box input {
+      width: 100%; padding: 10px 12px; margin: 0 0 0 0;
+      background: #1a1a4e; border: 1px solid #444488;
+      border-radius: 6px; color: #fff; font-size: 14px;
+      font-family: monospace; box-sizing: border-box; outline: none;
+    }
+    #login-box input:focus { border-color: #ff2f66; }
+
+    #login-box .error {
+      color: #ff6644; font-size: 12px; margin: 8px 0 0 0; min-height: 18px;
+    }
+
+    #login-box .btn {
+      width: 100%; padding: 12px; margin-top: 18px;
+      background: #ff2f66; border: none; border-radius: 6px;
+      color: #fff; font-size: 15px; font-family: monospace;
+      cursor: pointer; font-weight: bold;
+    }
+    #login-box .btn:hover { background: #ff5588; }
+    #login-box .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #login-box .toggle {
+      background: none; border: none; color: #8888cc; font-size: 13px;
+      font-family: monospace; cursor: pointer; margin-top: 12px; text-decoration: underline;
+    }
+    #login-box .toggle:hover { color: #fff; }
+  </style>
+  <script src="assets/js/phaser.min.js"></script>
+</head>
+<body>
+  <div id="login-overlay">
+    <div id="login-box">
+      <h1>OPERATION NEXUS</h1>
+      <p class="sub">THE LAST BASTION</p>
+      <label for="email-input">Email</label>
+      <input id="email-input" type="email" placeholder="email@exemple.com" autocomplete="email" />
+      <label for="pass-input">Password</label>
+      <input id="pass-input" type="password" placeholder="contrassenya" autocomplete="current-password" />
+      <div class="error" id="login-error"></div>
+      <button class="btn" id="login-btn">INICIAR SESSIÓ</button>
+      <button class="toggle" id="login-toggle">Registrar-se</button>
+    </div>
+  </div>
+
+  <div class="container" id="game-container"></div>
+  <script>
+    // ---- LOGIN OVERLAY LOGIC ----
+    let mode = 'login';
+    const overlay = document.getElementById('login-overlay');
+    const emailInput = document.getElementById('email-input');
+    const passInput = document.getElementById('pass-input');
+    const errorDiv = document.getElementById('login-error');
+    const loginBtn = document.getElementById('login-btn');
+    const toggleBtn = document.getElementById('login-toggle');
+
+    function setError(msg) { errorDiv.textContent = msg; }
+
+    async function submitLogin() {
+      const email = emailInput.value.trim();
+      const password = passInput.value.trim();
+      if (!email || !password) { setError('Omple email i password'); return; }
+      setError('');
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Connectant...';
+      try {
+        const nickname = email.split('@')[0];
+        const query = mode === 'register' ? `
+          mutation { registre(input: {email: "${email}", password: "${password}", nickname: "${nickname}"}) {
+            __typename
+            ... on AuthOk { token jugador { id nickname nivell credits } }
+            ... on ErrorAuth { mensaje }
+          }}
+        ` : `
+          mutation { iniciSessio(email: "${email}", password: "${password}") {
+            __typename
+            ... on AuthOk { token jugador { id nickname nivell credits } }
+            ... on ErrorAuth { mensaje }
+          }}
+        `;
+        const r = await fetch('/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+        const data = (await r.json()).data;
+        const res = mode === 'register' ? data.registre : data.iniciSessio;
+        if (res.__typename === 'ErrorAuth') {
+          setError(res.mensaje);
+          loginBtn.disabled = false;
+          loginBtn.textContent = mode === 'login' ? 'INICIAR SESSIÓ' : 'REGISTRAR-SE';
+          return;
+        }
+        // Success!
+        window.__jugadorData = { jugador: res.jugador, idToken: res.token, localId: res.jugador.id };
+        overlay.classList.add('hidden');
+        // Notify the Phaser game
+        if (window.__onLogin) window.__onLogin(window.__jugadorData);
+      } catch (e) {
+        setError('Error de connexió: ' + e.message);
+        loginBtn.disabled = false;
+        loginBtn.textContent = mode === 'login' ? 'INICIAR SESSIÓ' : 'REGISTRAR-SE';
+      }
+    }
+
+    loginBtn.addEventListener('click', submitLogin);
+    toggleBtn.addEventListener('click', () => {
+      mode = mode === 'login' ? 'register' : 'login';
+      loginBtn.textContent = mode === 'login' ? 'INICIAR SESSIÓ' : 'REGISTRAR-SE';
+      toggleBtn.textContent = mode === 'login' ? 'Registrar-se' : 'Iniciar sessió';
+      setError('');
+    });
+    emailInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+    passInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+    emailInput.focus();
+  </script>
+  <script src="src/main.js" type="module"></script>
+</body>
+</html>
